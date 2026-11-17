@@ -1,0 +1,7 @@
+{
+  "mode": "block",
+  "guards": {
+    "done-without-green": "block",
+    "secret-scan": "block"
+  }
+}
