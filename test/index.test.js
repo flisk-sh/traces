@@ -267,6 +267,30 @@ test('lang is stored as a two-letter code and drives the graph language', async 
   expect(buildGraph([{ created: '2026-11-17 1', kind: 'rerouted', why: 'x', actual: 'a', detail: 'lang en', lang: 'de', n: 1 }]).langs).toEqual({ de: 1 });
 });
 
+test('the graph keeps reroutes with different destinations or languages separate', async () => {
+  const e = env();
+  const primary = { ...ev, why: 'wolf: HTTP 429', actual: 'openrouter (m1)', lang: 'en' };
+  const now = new Date();
+  for (const input of [
+    primary,
+    primary,
+    { ...primary, actual: 'workers-ai (m2)' },
+    { ...primary, lang: 'uk' },
+  ]) {
+    await record(e, 'chat', validate(input).event, now);
+  }
+  const request = new Request('https://t/api/graph', { headers: { authorization: 'Bearer adm' } });
+  const response = await worker.fetch(request, e);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    total: 4,
+    dests: { openrouter: 3, 'workers-ai': 1 },
+    models: { m1: 3, m2: 1 },
+    langs: { en: 3, uk: 1 },
+  });
+  expect(e.DB.raw.prepare('SELECT n FROM traces ORDER BY id').all()).toEqual([{ n: 2 }, { n: 1 }, { n: 1 }]);
+});
+
 // The org bar (flisk.si/assets/bar.js) reads the signed-in login from [data-flisk-login]; its whole text must be the login.
 const hookOf = (html) => [...html.matchAll(/<span data-flisk-login hidden>([^<]*)<\/span>/g)].map((m) => m[1]);
 const getPage = async (e, cookie) => worker.fetch(new Request('https://t/', { headers: cookie ? { cookie } : {} }), e);

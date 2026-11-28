@@ -67,11 +67,16 @@ export function overLimit(app, now = Date.now(), limit = PER_MINUTE) {
 }
 export const resetLimits = () => { hits.clear(); lastCleanup = 0; };
 
-// Same app, route, kind and reason inside a minute is one row with a count.
+// Keep distinct reroute destinations and languages intact for the graph.
 export async function record(env, app, e, now = new Date()) {
   const at = now.toISOString();
   const since = new Date(now.getTime() - 60000).toISOString();
-  const same = await env.DB.prepare('SELECT id FROM traces WHERE app = ? AND route = ? AND kind = ? AND why = ? AND last >= ? ORDER BY id DESC LIMIT 1').bind(app, e.route, e.kind, e.why, since).first();
+  const same = await env.DB.prepare(`SELECT id FROM traces
+    WHERE app = ? AND route = ? AND kind = ? AND why = ? AND last >= ?
+      AND (kind <> 'rerouted' OR (actual IS ? AND lang IS ?))
+    ORDER BY id DESC LIMIT 1`)
+    .bind(app, e.route, e.kind, e.why, since, e.actual ?? null, e.lang ?? null)
+    .first();
   if (same) {
     await env.DB.prepare('UPDATE traces SET n = n + 1, last = ? WHERE id = ?').bind(at, same.id).run();
     return { merged: true };
